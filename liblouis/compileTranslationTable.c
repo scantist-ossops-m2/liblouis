@@ -1149,12 +1149,12 @@ parseChars(FileInfo *nested, CharsString *result, CharsString *token) {
 			}
 			utf32 = (utf32 << 6) + (token->chars[in++] & 0x3f);
 		}
-		if (CHARSIZE == 2 && utf32 > 0xffff) utf32 = 0xffff;
-		result->chars[out++] = (widechar)utf32;
 		if (out >= MAXSTRING) {
 			result->length = lastOutSize;
 			return 1;
 		}
+		if (CHARSIZE == 2 && utf32 > 0xffff) utf32 = 0xffff;
+		result->chars[out++] = (widechar)utf32;
 	}
 	result->length = out;
 	return 1;
@@ -2372,6 +2372,10 @@ compilePassOpcode(FileInfo *nested, TranslationTableOpcode opcode,
 		passLine.chars[endTest] = pass_endTest;
 		passLinepos = 0;
 		while (passLinepos <= endTest) {
+			if (passIC >= MAXSTRING) {
+				compileError(passNested, "Test part in multipass operand too long");
+				return 0;
+			}
 			switch ((passSubOp = passLine.chars[passLinepos])) {
 			case pass_lookback:
 				passInstructions[passIC++] = pass_lookback;
@@ -2547,6 +2551,10 @@ compilePassOpcode(FileInfo *nested, TranslationTableOpcode opcode,
 		while (passLinepos < passLine.length && passLine.chars[passLinepos] <= 32)
 			passLinepos++;
 		while (passLinepos < passLine.length && passLine.chars[passLinepos] > 32) {
+			if (passIC >= MAXSTRING) {
+				compileError(passNested, "Action part in multipass operand too long");
+				return 0;
+			}
 			switch ((passSubOp = passLine.chars[passLinepos])) {
 			case pass_string:
 				if (!verifyStringOrDots(nested, opcode, 1, 1, nofor)) {
@@ -2566,8 +2574,14 @@ compilePassOpcode(FileInfo *nested, TranslationTableOpcode opcode,
 			actionDoCharsDots:
 				if (passHoldString.length == 0) return 0;
 				passInstructions[passIC++] = passHoldString.length;
-				for (kk = 0; kk < passHoldString.length; kk++)
+				for (kk = 0; kk < passHoldString.length; kk++) {
+					if (passIC >= MAXSTRING) {
+						compileError(passNested,
+								"@ operand in action part of multipass operand too long");
+						return 0;
+					}
 					passInstructions[passIC++] = passHoldString.chars[kk];
+				}
 				break;
 			case pass_variable:
 				passLinepos++;
@@ -2973,7 +2987,7 @@ compileHyphenation(FileInfo *nested, CharsString *encoding, int *lastToken,
 	HyphenationTrans *holdPointer;
 	HyphenHashTab *hashTab;
 	CharsString word;
-	char pattern[MAXSTRING];
+	char pattern[MAXSTRING + 1];
 	unsigned int stateNum = 0, lastState = 0;
 	int i, j, k = encoding->length;
 	widechar ch;
